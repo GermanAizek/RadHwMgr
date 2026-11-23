@@ -1,12 +1,47 @@
 #include "radhwmgr.h"
 
+//
+// Whitelist and validation for Model-Specific Registers
+//
 BOOLEAN RadValidateMsrAccess(
     ULONG Msr,
     BOOLEAN IsWrite
 )
 {
-    UNREFERENCED_PARAMETER(Msr);
-    UNREFERENCED_PARAMETER(IsWrite);
+    // Block critical CPU execution control and system call registers
+    switch (Msr) {
+    case 0x0000001B: // IA32_APIC_BASE
+    case 0x0000003A: // IA32_FEATURE_CONTROL
+    case 0x00000079: // IA32_BIOS_UPDT_TRIG
+    case 0x00000174: // IA32_SYSENTER_CS
+    case 0x00000175: // IA32_SYSENTER_ESP
+    case 0x00000176: // IA32_SYSENTER_EIP
+    case 0xC0000080: // IA32_EFER
+    case 0xC0000081: // IA32_STAR
+    case 0xC0000082: // IA32_LSTAR (System call entry RIP - primary BYOVD target)
+    case 0xC0000083: // IA32_CSTAR
+    case 0xC0000084: // IA32_FMASK
+    case 0xC0000100: // IA32_FS_BASE
+    case 0xC0000101: // IA32_GS_BASE
+    case 0xC0000102: // IA32_KERNEL_GS_BASE
+    case 0xC0000103: // IA32_TSC_AUX
+        return FALSE;
+    default:
+        break;
+    }
+
+    if (IsWrite) {
+        // Only permit writes to safe diagnostic, performance counter, and thermal reporting registers
+        if ((Msr >= 0x000000C1 && Msr <= 0x000000C8) || // IA32_PMC0 - IA32_PMC7
+            (Msr >= 0x00000186 && Msr <= 0x00000189) || // IA32_PERFEVTSEL0 - IA32_PERFEVTSEL3
+            (Msr >= 0x00000198 && Msr <= 0x0000019D) || // IA32_PERF_STATUS / IA32_PERF_CTL
+            (Msr >= 0x000001A0 && Msr <= 0x000001A4) || // Misc enables / RAPL
+            (Msr >= 0x00000606 && Msr <= 0x00000619)) { // RAPL Power / Energy status
+            return TRUE;
+        }
+        return FALSE;
+    }
+
     return TRUE;
 }
 
@@ -24,16 +59,21 @@ NTSTATUS RadGetMsr(
         return STATUS_BUFFER_TOO_SMALL;
     }
 
+    // FIX: Validate MSR register access to prevent unauthorized state inspection
     if (!RadValidateMsrAccess(pReq->Register, FALSE)) {
         return STATUS_ACCESS_DENIED;
     }
 
-    msrValue = __readmsr(pReq->Register);
-    pReq->HighPart = (ULONG)(msrValue >> 32);
-    pReq->LowPart = (ULONG)(msrValue & 0xFFFFFFFF);
+    __try {
+        msrValue = __readmsr(pReq->Register);
+        pReq->HighPart = (ULONG)(msrValue >> 32);
+        pReq->LowPart = (ULONG)(msrValue & 0xFFFFFFFF);
 
-    Irp->IoStatus.Information = sizeof(RADHWMGR_MSR_REQ);
-    return STATUS_SUCCESS;
+        Irp->IoStatus.Information = sizeof(RADHWMGR_MSR_REQ);
+        return STATUS_SUCCESS;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return GetExceptionCode();
+    }
 }
 
 NTSTATUS RadSetMsr(
@@ -49,13 +89,18 @@ NTSTATUS RadSetMsr(
         return STATUS_BUFFER_TOO_SMALL;
     }
 
+    // FIX: Enforce MSR whitelist to prevent arbitrary kernel execution hijack (LSTAR)
     if (!RadValidateMsrAccess(pReq->Register, TRUE)) {
         return STATUS_ACCESS_DENIED;
     }
 
-    msrValue = ((ULONG64)pReq->HighPart << 32) | (ULONG64)pReq->LowPart;
-    __writemsr(pReq->Register, msrValue);
+    __try {
+        msrValue = ((ULONG64)pReq->HighPart << 32) | (ULONG64)pReq->LowPart;
+        __writemsr(pReq->Register, msrValue);
 
-    Irp->IoStatus.Information = 0;
-    return STATUS_SUCCESS;
+        Irp->IoStatus.Information = 0;
+        return STATUS_SUCCESS;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return GetExceptionCode();
+    }
 }
