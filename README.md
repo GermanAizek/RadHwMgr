@@ -18,17 +18,17 @@ Driver RadHwMgr.sys allows platform utility software to interact with system har
 
 Fixed vulnerabilities in opensource driver RadHwMgr.sys:
 
-- [ ] (LOLDrivers: RadHwMgr.sys)[https://www.loldrivers.io/drivers/7bb4d807-9a66-48ff-9fb7-82780f3b015e/]
-  - Low-privilege users can access MSRs, map arbitrary physical memory, read/write hardware I/O ports, and execute arbitrary code in kernel mode (BYOVD, MITRE ATT&CK T1068).
+- [x] (LOLDrivers: RadHwMgr.sys)[https://www.loldrivers.io/drivers/7bb4d807-9a66-48ff-9fb7-82780f3b015e/]
+  - Low-privilege users can access MSRs, map arbitrary physical memory, read/write hardware I/O ports, and execute arbitrary code in kernel mode (BYOVD, MITRE ATT&CK T1068). Fixed by enforcing administrative ACLs on device creation.
 
 Fixed no publish vulnerabilities and bugs which contributors to this project found:
 
-- [ ] Device deletion bypassed on symbolic link deletion failure ([view code](main.c))
-- [ ] Arbitrary MSR read and write in commands 0x9C406474, 0x9C406478 ([view code](msr.c))
-- [ ] Arbitrary physical memory read and write in commands 0x9C40242C, 0x9C406484 ([view code](mem.c))
-- [ ] Unfiltered write to critical x86 I/O ports and controllers in commands 0x9C406438, 0x9C40243C ([view code](io.c))
-- [ ] Arbitrary PCI configuration space modification in commands 0x9C406440, 0x9C402444 ([view code](pci.c))
-- [ ] Device creation with weak permissions ([view code](main.c))
+- [x] Device deletion bypassed on symbolic link deletion failure ([view code](main.c))
+- [x] Arbitrary MSR read and write in commands 0x9C406474, 0x9C406478 ([view code](msr.c))
+- [x] Arbitrary physical memory read and write in commands 0x9C40242C, 0x9C406484 ([view code](mem.c))
+- [x] Unfiltered write to critical x86 I/O ports and controllers in commands 0x9C406438, 0x9C40243C ([view code](io.c))
+- [x] Arbitrary PCI configuration space modification in commands 0x9C406440, 0x9C402444 ([view code](pci.c))
+- [x] Device creation with weak permissions ([view code](main.c))
 
 Authors:
 
