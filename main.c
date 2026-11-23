@@ -1,5 +1,10 @@
 #include "radhwmgr.h"
 
+// Device Class GUID for RadHwMgr (LOLDrivers: 7bb4d807-9a66-48ff-9fb7-82780f3b015e)
+static const GUID GUID_DEVCLASS_RADHWMGR = {
+    0x7BB4D807, 0x9A66, 0x48FF, { 0x9F, 0xB7, 0x82, 0x78, 0x0F, 0x3B, 0x01, 0x5E }
+};
+
 PDEVICE_OBJECT g_DeviceObject = NULL;
 PDRIVER_OBJECT g_DriverObject = NULL;
 
@@ -25,6 +30,8 @@ VOID RadUnload(
     if (g_DeviceObject != NULL) {
         RtlInitUnicodeString(&dosDeviceName, RADHWMGR_DOS_DEVICE_NAME);
         IoDeleteSymbolicLink(&dosDeviceName);
+
+        // FIX: Unconditionally delete device object to prevent resource leak on unload
         IoDeleteDevice(g_DeviceObject);
         g_DeviceObject = NULL;
     }
@@ -144,20 +151,34 @@ NTSTATUS DriverEntry(
     NTSTATUS status;
     UNICODE_STRING deviceName;
     UNICODE_STRING dosDeviceName;
+    UNICODE_STRING sddl;
     PRADHWMGR_DEVICE_EXTENSION devExt;
 
     UNREFERENCED_PARAMETER(RegistryPath);
 
     g_DriverObject = DriverObject;
 
+    DriverObject->MajorFunction[IRP_MJ_CREATE] = RadCreateClose;
+    DriverObject->MajorFunction[IRP_MJ_CLOSE] = RadCreateClose;
+    DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = RadDispatchDeviceControl;
+    DriverObject->DriverUnload = RadUnload;
+
     RtlInitUnicodeString(&deviceName, RADHWMGR_DEVICE_NAME);
-    status = IoCreateDevice(
+    RtlInitUnicodeString(&dosDeviceName, RADHWMGR_DOS_DEVICE_NAME);
+
+    // FIX: Secure device creation to mitigate unprivileged access (LOLDrivers: RadHwMgr.sys, 7bb4d807-9a66-48ff-9fb7-82780f3b015e)
+    // SDDL: D:P(A;;GA;;;SY)(A;;GA;;;BA)
+    RtlInitUnicodeString(&sddl, L"D:P(A;;GA;;;SY)(A;;GA;;;BA)");
+
+    status = IoCreateDeviceSecure(
         DriverObject,
         sizeof(RADHWMGR_DEVICE_EXTENSION),
         &deviceName,
         RADHWMGR_DEVICE_TYPE,
-        0,
+        FILE_DEVICE_SECURE_OPEN,
         FALSE,
+        &sddl,
+        &GUID_DEVCLASS_RADHWMGR,
         &g_DeviceObject
     );
 
@@ -165,9 +186,9 @@ NTSTATUS DriverEntry(
         return status;
     }
 
-    RtlInitUnicodeString(&dosDeviceName, RADHWMGR_DOS_DEVICE_NAME);
     status = IoCreateSymbolicLink(&dosDeviceName, &deviceName);
     if (!NT_SUCCESS(status)) {
+        // FIX: Delete device object on symbolic link creation failure
         IoDeleteDevice(g_DeviceObject);
         g_DeviceObject = NULL;
         return status;
@@ -180,11 +201,6 @@ NTSTATUS DriverEntry(
     IoInitializeRemoveLock(&devExt->RemoveLock, TAG_RADHWMGR_POOL, 1, 20);
     devExt->IsStarted = TRUE;
     devExt->LinkCreated = TRUE;
-
-    DriverObject->MajorFunction[IRP_MJ_CREATE] = RadCreateClose;
-    DriverObject->MajorFunction[IRP_MJ_CLOSE] = RadCreateClose;
-    DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = RadDispatchDeviceControl;
-    DriverObject->DriverUnload = RadUnload;
 
     return STATUS_SUCCESS;
 }

@@ -2,6 +2,7 @@
 
 #include <ntddk.h>
 #include <wdm.h>
+#include <wdmsec.h>
 #include <ntstrsafe.h>
 
 #define RADHWMGR_DEVICE_NAME        L"\\Device\\RadHwMgr"
